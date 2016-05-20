@@ -6870,10 +6870,9 @@ int msUpdateMapFromURL(mapObj *map, char *variable, char *string)
 // replace %tag% (classical) or %tag|filter%, which is tag passed into a specific filter
 char *msFilterAndReplace(char *str, const char *tag, const char *val) {
 
-  size_t /*str_len,*/ tag_len, val_len;
+  size_t /*str_len,*/ tag_len/*, val_len*/;
   char *tmp_ptr;
 
-msDebug("filter and replace: %s %s %s\n", str, tag, val);
   if( (tmp_ptr = (char *) strcasestr(str, tag)) == NULL)
     return(str);
 
@@ -6882,7 +6881,7 @@ msDebug("filter and replace: %s %s %s\n", str, tag, val);
  
   //str_len = strlen(str);
   tag_len = strlen(tag);
-  val_len = strlen(val);
+  //val_len = strlen(val);
 
   // classical %key%
   if(*(tmp_ptr + tag_len) == '%') {
@@ -6894,14 +6893,13 @@ msDebug("filter and replace: %s %s %s\n", str, tag, val);
   }
 
   // special %{key|filter}% scheme
-msDebug("bef filter %s %c\n", tmp_ptr, *(tmp_ptr + 1));
   if(*(tmp_ptr - 1) == '{') {
     char *tmp_ptr_end, *tag_full, *tag_filter;
     size_t tag_full_len, filter_len;
+    size_t max_size = 1024;
     if( (tmp_ptr_end = strchr( tmp_ptr, '}' )) == NULL || *(tmp_ptr_end+1) != '%' || *(tmp_ptr+tag_len) != '|' )
       return(str);
    
-msDebug("filter replace confirmed\n");
     tag_full_len = tmp_ptr_end-tmp_ptr+4;
     //TODO check !! (including the end-of-chain ?)
     tag_full = msSmallMalloc(tag_full_len+1);
@@ -6911,45 +6909,35 @@ msDebug("filter replace confirmed\n");
     tag_filter = msSmallMalloc(filter_len+1);
     strncpy(tag_filter, tmp_ptr+tag_len+1, filter_len);
     tag_filter[filter_len] = '\0';
-msDebug("debug: tag_filter = %s (%d)\n", tag_filter, filter_len);
 
     // generic number filter
     if( strncmp(tag_filter, "number:", 7) == 0) {
-msDebug("debug: number filter\n");
       char * tag_num_filter, *result;
       tag_num_filter = msSmallMalloc(filter_len-6);
       strncpy(tag_num_filter, tag_filter+7, filter_len-7);
-msDebug("debug: tag_num_filter = %s\n", tag_num_filter);
-      result = msSmallMalloc(1024); // warn: limited number of caracts (difficult to estimates...) // better to use snprintf ?
-      sprintf(result, tag_num_filter, val);
+      tag_num_filter[filter_len-7] = '\0';
+      result = msSmallMalloc(max_size); // warn: limited number of caracts (difficult to estimates...) // better to use snprintf ?
+      sprintf(result, tag_num_filter, atof(val) );
       msCaseReplaceSubstring(str, tag_full, result);
-msDebug("debug: final str = %s\n", str);
       free(tag_num_filter);
       free(result);
     }
 
     // special date filter
     if( strncmp(tag_filter, "date:", 5) == 0) {
-msDebug("debug: date filter\n");
       struct tm time;
       char *tag_date_filter, *result;
-      size_t max_size = 1024;
       tag_date_filter = msSmallMalloc(filter_len-4);
       strncpy(tag_date_filter, tag_filter+5, filter_len-5);
       tag_date_filter[filter_len-5] = '\0';
-msDebug("debug: tag_date_filter = %s (%d)\n", tag_date_filter, filter_len-5);
       result = msSmallMalloc(max_size); // warn: limited number of caracts (difficult to estimates...) // better to use snprintf ? 
-      //TODO transform "val" into date into "result"
       msTimeInit(&time);
-msDebug("debug: input val = %s\n", val);
       if(msParseTime(val, &time) != MS_TRUE) {
         msSetError(MS_SYMERR, "Parsing error with date pattern %s", "getString()", tag_date_filter);
         return(str);
       }
       strftime(result, max_size, tag_date_filter, &time);
-msDebug("debug: modified date = %s\n", result);
       msCaseReplaceSubstring(str, tag_full, result);
-msDebug("debug: final str = %s\n", str);
       free(tag_date_filter);
       free(result);
     }
@@ -6987,7 +6975,6 @@ static void classSubstituteString(classObj *class, const char *from, const char 
 static void layerSubstituteString(layerObj *layer, const char *from, const char *to)
 {
   int c;
-msDebug("layer sub string\n");
 //  if(layer->data) layer->data = msCaseReplaceSubstring(layer->data, from, to);
 //  if(layer->tileindex) layer->tileindex = msCaseReplaceSubstring(layer->tileindex, from, to);
 //  if(layer->connection) layer->connection = msCaseReplaceSubstring(layer->connection, from, to);
@@ -7141,12 +7128,10 @@ void msApplySubstitutions(mapObj *map, char **names, char **values, int npairs)
   int l;
   const char *key, *value, *validation;
 
-msDebug("apply subst, %d\n", npairs);
   //char *tag;
   for(l=0; l<map->numlayers; l++) {
     int c;
     layerObj *lp = GET_LAYER(map,l);
-msDebug("layer %d\n", l);
     for(c=0; c<lp->numclasses; c++) {
       classObj *cp = lp->class[c];
       key = NULL;
@@ -7174,7 +7159,6 @@ msDebug("layer %d\n", l);
     while( (key = msNextKeyFromHashTable(&lp->validation, key)) ) {
       value = _get_param_value(key,names,values,npairs);
       if(!value) continue; /*parameter was not in url*/
-msDebug("layer key=value: %s=%s\n", key, value);
       validation = msLookupHashTable(&lp->validation, key);
       if(msEvalRegex(validation, value)) {
         /* we've found a substitution and it validates correctly, now let's apply it */
